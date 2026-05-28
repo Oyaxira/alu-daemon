@@ -190,6 +190,16 @@ def process_commands
         data: { sessions: sessions }
       }.to_json)
 
+    when 'list_projects'
+      projects = list_projects
+      $redis.publish(EVENT_CHANNEL, {
+        type: 'response',
+        command: 'list_projects',
+        id: cmd['id'],
+        success: true,
+        data: { projects: projects }
+      }.to_json)
+
     else
       # prompt / new_session / switch_session / bash / get_state ...
       # 全部透传给 pi。如果 pi 忙则自动追加 streamingBehavior
@@ -238,18 +248,52 @@ rescue StandardError => e
   []
 end
 
-# 从路径解析项目名：--home-luziyi-workshop-pi-workshop-roleplay-- → roleplay
+# ── Project 列表（扫描所有子目录，不受 30 条限制）─────
+def list_projects
+  session_dir = File.expand_path('~/.pi/agent/sessions')
+  return [] unless Dir.exist?(session_dir)
+
+  Dir.glob(File.join(session_dir, '*'))
+     .select { |d| File.directory?(d) }
+     .filter_map do |project_dir|
+       latest = Dir.glob(File.join(project_dir, '*.jsonl'))
+                    .max_by { |f| File.mtime(f).to_i }
+       next unless latest
+
+       info = parse_session_info(latest)
+       cwd = info[:cwd]
+       # 从 cwd 取最后 2 段作为显示名（如 pi-workshop/roleplay）
+       display = cwd ? cwd.split('/').last(2).join('/') : extract_project(project_dir, session_dir)
+
+       {
+         project: display,
+         cwd: cwd,
+         path: latest,
+         session_name: info[:session_name],
+         mtime: File.mtime(latest).strftime('%Y-%m-%dT%H:%M:%S%:z')
+       }
+     end
+     .sort_by { |p| p[:project] || '' }
+rescue StandardError => e
+  log("list_projects error: #{e.message}")
+  []
+end
+
+# 从路径解析项目名：--home-luziyi-workshop-pi-workshop-roleplay-- → pi-workshop-roleplay
 def extract_project(path, session_dir)
   rel = path.sub(session_dir, '').split('/').reject(&:empty?)
   dir = rel.length >= 2 ? rel[-2] : (rel.first || '')
-  dir.sub(/^--/, '').sub(/--$/, '').gsub('-', '/').split('/').last || dir
+  cleaned = dir.sub(/^--/, '').sub(/--$/, '')
+  # 去掉公共前缀 /home/luziyi/workshop/
+  name = cleaned.sub(/^home-luziyi-workshop-/, '') if cleaned.start_with?('home-luziyi-workshop-')
+  name || cleaned
 rescue StandardError
   nil
 end
 
-# 解析 session JSONL，提取名称、首条消息、父 session
+# 解析 session JSONL，提取名称、首条消息、父 session、工作目录
 def parse_session_info(path)
-  result = { session_name: nil, first_message: nil, parent_session: nil }
+  result = { session_name: nil, first_message: nil, parent_session: nil, cwd: nil }
   File.open(path) do |f|
     f.each_line do |line|
       entry = begin
@@ -261,6 +305,7 @@ def parse_session_info(path)
       case entry['type']
       when 'session'
         result[:parent_session] = entry['parentSession'] if entry['parentSession']
+        result[:cwd] = entry['cwd'] if entry['cwd']
       when 'session_info'
         result[:session_name] = entry['name']&.strip if entry['name']
       when 'message'
@@ -279,13 +324,13 @@ def parse_session_info(path)
         result[:first_message] = text&.strip&.[](0, 50) if text
       end
 
-      # 三个字段都拿到了就停
-      break if result[:session_name] && result[:first_message] && result[:parent_session]
+      # 四个字段都拿到了就停
+      break if result[:session_name] && result[:first_message] && result[:parent_session] && result[:cwd]
     end
   end
   result
 rescue StandardError
-  { session_name: nil, first_message: nil, parent_session: nil }
+  { session_name: nil, first_message: nil, parent_session: nil, cwd: nil }
 end
 
 # ── 信号处理 ──────────────────────────────────────
