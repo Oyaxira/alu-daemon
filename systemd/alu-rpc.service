@@ -6,7 +6,7 @@ After=network.target redis.service
 Type=simple
 WorkingDirectory=/home/luziyi/workshop/alu-daemon
 ExecStart=/home/luziyi/.rvm/rubies/ruby-3.1.3/bin/ruby alu-daemon.rb
-Environment=ROLEPLAY_DIR=/home/luziyi/workshop/pi-workshop/roleplay
+Environment=ROLEPLAY_DIR=/home/luziyi/workshop/alu_workstation
 
 # 确保能找到 pi (nvm) 和 ruby gems
 Environment=PATH=/home/luziyi/.nvm/versions/node/v22.21.0/bin:/home/luziyi/.rvm/rubies/ruby-3.1.3/bin:/home/luziyi/.rvm/gems/ruby-3.1.3/bin:/usr/local/bin:/usr/bin:/bin
