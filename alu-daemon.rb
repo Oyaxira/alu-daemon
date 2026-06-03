@@ -9,7 +9,7 @@ require 'json'
 require 'securerandom'
 
 # ── 配置 ──────────────────────────────────────────
-ROLEPLAY_DIR = File.expand_path(__dir__)
+ROLEPLAY_DIR = ENV.fetch('ROLEPLAY_DIR', File.expand_path('../pi-workshop/roleplay', __dir__))
 REDIS_URL    = ENV.fetch('ALU_REDIS_URL', 'redis://localhost:6379/5')
 BROADCAST_REDIS_URL = ENV.fetch('ALU_BROADCAST_REDIS_URL', 'redis://localhost:6379/4')
 CMD_CHANNEL         = 'alu:rpc:cmd'
